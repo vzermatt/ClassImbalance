@@ -1,12 +1,75 @@
 ''''
-produce txt file contains the files names for the train, validation and test set
-
+    produce txt file contains the files names for the train, validation and test set
 '''
 
 import numpy as np
 import pandas as pd
 import os, pickle, glob
+
 os.chdir('/home/valerie/Python/landuse/')
+def Produce_samples_list(input_fn, max_samples_per_cls, output_fn):
+    path = str(dest) + input_fn +'.csv'
+    df =  pd.read_csv( path, delimiter = ",", header =0)
+    df = df.values.tolist()
+    print('\n Number of samples in input file:',len(df),'\n','*'*50)
+    outputlist=[]
+    removed=0
+    # Find all the image corresponding to a class
+    for classe in class_all : 
+        lst = []
+        nb=0
+        for img_name in df:   # loop over the image to find all those belonging to a class
+            if tileID2class[int(img_name[0][:-4])] ==classe:
+                lst+=[img_name]
+        nb = len(lst)
+        if nb ==0:
+           continue 
+        elif nb> max_samples_per_cls:
+           list_size = max_samples_per_cls
+        else :
+            list_size = nb
+        print(list_size,'\t', nb,'\t',classe,class2txt[classe])
+       # Randomize the list order
+        lst= np.random.permutation(lst)
+        lst= np.random.permutation(lst)
+        lst= list(lst)
+        outputlist.extend(lst[0: list_size])
+        removed += nb - list_size
+    print('*'*50,'\nElement in output file:',len(outputlist),'Element removed:',removed)
+    print('Total:',removed+len(outputlist),'\t\t Input size: ',len(df))
+    x = pd.DataFrame(outputlist)
+    x.to_csv(output_fn,index=False,sep=';',header=False)
+    return outputlist
+
+
+def print_class_distr(train,val,test):    
+    x = pd.read_csv( train, delimiter = ",", header =0).values.tolist()
+    y = pd.read_csv( val, delimiter = ",", header =0).values.tolist()
+    z = pd.read_csv( test, delimiter = ",", header =0).values.tolist()
+    print(train,'-'*30)
+    
+    class_all = [101, 103, 105, 106, 107, 108, 121, 122, 
+                123, 146, 147, 162, 163, 201, 202, 221,
+                222, 223, 241, 242, 243, 301, 303, 304, 
+                401, 402, 421, 423]
+    print('classe\t nb \t len(tr_lst) \t len(val_lst) \t len(test_lst)')
+    for classe in class_all : 
+        tr_lst,val_lst, test_lst=[],[],[]
+        # Find all the image corresponding to a class
+        for img_name in x:
+            if tileID2class[int(img_name[0][:-4])] ==classe:
+                tr_lst+=[img_name]
+        #print(len(tr_lst),',')
+        for img_name in y:
+            if tileID2class[int(img_name[0][:-4])] ==classe:
+                val_lst+=[img_name]
+        for img_name in z:
+            if tileID2class[int(img_name[0][:-4])] ==classe:
+                test_lst+=[img_name]
+        nb = len(tr_lst) + len(val_lst) + len(test_lst)
+        print(classe,'\t',nb,'\t',len(tr_lst),'\t',len(val_lst),'\t',len(test_lst),class2txt[classe])
+    return
+
 
 src  = '/home/valerie/data/refsurface/'
 dest = '/home/valerie/Python/landuse/tile_list/'
@@ -117,68 +180,7 @@ print( set(  x[0]).intersection(z[0])  )
 # # ---------------------------------------------------------
 # 60 for training
 # 10 for validation
-def Produce_samples_list(input_fn, max_samples_per_cls, output_fn):
-    path = str(dest) + input_fn +'.csv'
-    df =  pd.read_csv( path, delimiter = ",", header =0)
-    df = df.values.tolist()
-    print('\n Number of samples in input file:',len(df),'\n','*'*50)
-    outputlist=[]
-    removed=0
-    # Find all the image corresponding to a class
-    for classe in class_all : 
-        lst = []
-        nb=0
-        for img_name in df:   # loop over the image to find all those belonging to a class
-            if tileID2class[int(img_name[0][:-4])] ==classe:
-                lst+=[img_name]
-        nb = len(lst)
-        if nb ==0:
-           continue 
-        elif nb> max_samples_per_cls:
-           list_size = max_samples_per_cls
-        else :
-            list_size = nb
-        print(list_size,'\t', nb,'\t',classe,class2txt[classe])
-       # Randomize the list order
-        lst= np.random.permutation(lst)
-        lst= np.random.permutation(lst)
-        lst= list(lst)
-        outputlist.extend(lst[0: list_size])
-        removed += nb - list_size
-    print('*'*50,'\nElement in output file:',len(outputlist),'Element removed:',removed)
-    print('Total:',removed+len(outputlist),'\t\t Input size: ',len(df))
-    x = pd.DataFrame(outputlist)
-    x.to_csv(output_fn,index=False,sep=';',header=False)
-    return outputlist
 
-
-def print_class_distr(train,val,test):    
-    x = pd.read_csv( train, delimiter = ",", header =0).values.tolist()
-    y = pd.read_csv( val, delimiter = ",", header =0).values.tolist()
-    z = pd.read_csv( test, delimiter = ",", header =0).values.tolist()
-    print(train,'-'*30)
-    
-    class_all = [101, 103, 105, 106, 107, 108, 121, 122, 
-                123, 146, 147, 162, 163, 201, 202, 221,
-                222, 223, 241, 242, 243, 301, 303, 304, 
-                401, 402, 421, 423]
-    print('classe\t nb \t len(tr_lst) \t len(val_lst) \t len(test_lst)')
-    for classe in class_all : 
-        tr_lst,val_lst, test_lst=[],[],[]
-        # Find all the image corresponding to a class
-        for img_name in x:
-            if tileID2class[int(img_name[0][:-4])] ==classe:
-                tr_lst+=[img_name]
-        #print(len(tr_lst),',')
-        for img_name in y:
-            if tileID2class[int(img_name[0][:-4])] ==classe:
-                val_lst+=[img_name]
-        for img_name in z:
-            if tileID2class[int(img_name[0][:-4])] ==classe:
-                test_lst+=[img_name]
-        nb = len(tr_lst) + len(val_lst) + len(test_lst)
-        print(classe,'\t',nb,'\t',len(tr_lst),'\t',len(val_lst),'\t',len(test_lst),class2txt[classe])
-    return
 
 dest = '/home/valerie/Python/landuse/tile_list/'
 dico_path = '/home/valerie/Python/landuse/Dictionnaries/'

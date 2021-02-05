@@ -1,3 +1,10 @@
+'''
+    Produce the training set for comparison with ADELE
+    Read the csv files with ADELE predictions
+    Exclude samples points from the test set
+    PRoduce the train, validation and test sets for our models
+'''
+
 import numpy as np
 import pandas as pd
 import os, pickle, glob

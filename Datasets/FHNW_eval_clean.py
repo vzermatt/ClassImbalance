@@ -1,3 +1,10 @@
+''''
+    Compute the accuracy metrics for the ADELE prediction from the 
+    results provided by the FHNW (csvfile)
+    with the clean classes only
+
+'''
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd

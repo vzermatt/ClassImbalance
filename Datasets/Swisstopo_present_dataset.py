@@ -1,5 +1,5 @@
 ''''
-Loop over the classes to produce a images tiles
+    Produce rgb images from the training samples in the dataset
 
 '''
 
