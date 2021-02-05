@@ -85,8 +85,8 @@ for inputs, labels in test_loader:
 epoch_acc = running_corrects.double() / test_nb
 print('Test Phase Overall Accuracy: {:.4f}'.format( epoch_acc))
 # use 
-all_labelsx=le.inverse_transform(all_labels)
-all_predsx=le.inverse_transform(all_preds)
+
+
 # from label id to label text
 all_txtlabels =[]
 all_txtpreds =[]
@@ -98,7 +98,7 @@ for el in list( le.inverse_transform(all_preds)):
 # extract all classes name in a list
 classes =list(np.unique(all_txtlabels))
 
-# 3. Create confusion matrix
+# 4. Create confusion matrix
 #-----------------------------
 if False: # load predictions from text files
     fp = '/home/valerie/Python/landuse/Images/testing/predictions_cleanv2_focalCBL_099_1.txt'

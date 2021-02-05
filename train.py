@@ -1,11 +1,11 @@
 '''
-    Train Resnet 50 model on full dataset
+    Train Resnet 50 model on the dataset
 '''
 
 import argparse
 import torch
 from torch.utils.data import  DataLoader
-from torchvision import transforms
+from torchvision import transforms, models
 import time
 import copy
 import util
@@ -19,7 +19,7 @@ parser.add_argument('--ep', default = 100, help = "number of epochs", type =int)
 parser.add_argument('--bs', default = 128, help = "size of the batch", type =int)
 parser.add_argument('--wd', default = 1e-1, help = " weight decay ", type = float )
 parser.add_argument('--step', default = 40, help = " learning rate step size ", type = int )
-parser.add_argument('--info', default = 'EQL_090_900_100epochs', help = "information", type = str )
+parser.add_argument('--info', default = 'MODEL_NAME', help = "model name and parameters", type = str )
 args = parser.parse_args()
 
 # set random seed
@@ -27,16 +27,13 @@ seed = 23452
 torch.random.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 
-
-
 # 1. Load train and validation  set
 #------------------------------
 # Locate data and labels for training and validation
 data_path = '/home/valerie/data/refsurface/'
-dico_path = '/home/valerie/Python/landuse/Dictionnaries/dict_NOLU46_all.p'
-
-train_list = '/home/valerie/Python/landuse/tile_list/train.csv'
-val_list   ='/home/valerie/Python/landuse/tile_list/val.csv'
+dico_path = '/home/valerie/Python/landuse/Dictionnaries/dict_NOLU46_clean.p'   # select the  dictionnary !
+train_list = '/home/valerie/Python/landuse/tile_list/cleanv2_train.csv'         # clean train!
+val_list   ='/home/valerie/Python/landuse/tile_list/cleanv2_val.csv'            # clean val !
 
 # Define the transformations to perform on input images
 transforms_data = transforms.Compose([
@@ -58,66 +55,79 @@ transforms_data_val = transforms.Compose([
 train_set = util.SwisstopoDataset(train_list, dico_path, data_path, transforms_data)
 val_set   = util.SwisstopoDataset(val_list,   dico_path, data_path, transforms_data_val)
 
+train_loader = DataLoader(train_set, batch_size= args.bs , shuffle=True, num_workers=1)
+val_loader   = DataLoader(val_set,   batch_size= args.bs , shuffle=True, num_workers=1)
+# Some info about the dataset :
 train_nb = len(train_set)
 val_nb   = len(val_set)
 
-train_loader = DataLoader(train_set, batch_size= args.bs , shuffle=True, num_workers=1)
-val_loader   = DataLoader(val_set,   batch_size= args.bs , shuffle=True, num_workers=1)
-
-# Some info about the dataset :
 samples_per_cls = util.get_samples_per_class(train_list,dico_path)
 no_of_classes = len(samples_per_cls)
 
 # 2. Define model
 #-----------------------------
-model_ft = util.MyResnet50()
+# Load pretrained Resnet50 layer
+model_ft = models.resnet.resnet50(pretrained=True)
 
-# Train on GPU
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
-print(device)
-model_ft = model_ft.to(device)
+# Add a dropout layer and change output size
+num_fc = model_ft.fc.in_features
+model_ft.fc = torch.nn.Sequential(
+    torch.nn.Dropout(0.5),            # add dropout with 50% probability
+    torch.nn.Linear(num_fc, no_of_classes)       # new output layer
+)
+
+# Change the first layer (conv1) to add a 4th and a 5th channel.
+weight_conv1 = model_ft.conv1.weight.clone()
+model_ft.conv1 = torch.nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+# weight from Red channel(0) are copied for the new channels ( DEM and NIR)
+with torch.no_grad():
+    model_ft.conv1.weight[:, 1:4] = weight_conv1        # RGB channels
+    model_ft.conv1.weight[:, 0] = weight_conv1[:, 0]    # NIR 
+    model_ft.conv1.weight[:, 4] = weight_conv1[:, 0]    # DEM
 
 # TWO PHASES TRAINING PART 
 #_______________________________________
-#src ='/home/valerie/Python/landuse/TrainedModels/state_13Dec2020_20h20.pth'
+#src ='/home/valerie/Python/landuse/TrainedModels/state_clean_sCBL_099_patience30.pth'
 #checkpoint = torch.load(src)
 #model_dict = checkpoint['model']
 #model_ft.load_state_dict(model_dict) # load the model state dictionnary 
 #_______________________________________
 
+# Train on GPU
+device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+model_ft = model_ft.to(device)
+print(device)
 # 3. Define the loss function  & optimizer
 #----------------------------------------------
-# HERE select the loss:
-lossf ='EQL'
+lossf ='CBL'
 
 if lossf == 'CEL': # Softmax loss
     criterion_ft = torch.nn.CrossEntropyLoss()
 
 elif lossf == 'EQL': # Equalization Loss
-    criterion_ft = customLoss.SoftmaxEQL(lambda_ = 900, ignore_prob =0.9)
+    criterion_ft = customLoss.SoftmaxEQL(lambda_ = 1000, ignore_prob =0.9)
 
 elif lossf =='inverse_freq':
-    # Soft max loss with inverse  frequency reweighting
-    # select square root inverse ('sqrt') or inverse frequency ('simple') :
-    class_weights = customLoss.Compute_frequency_weights(freq='sqrt')
+    # Soft max loss with inverse or inverse square root  frequency reweighting
+    class_weights = customLoss.Compute_frequency_weights(freq='simple', samples_per_cls = samples_per_cls)
     class_weights = class_weights.to(device)
     criterion_ft = torch.nn.CrossEntropyLoss(weight=class_weights)    
 
 elif lossf == 'CBL': # Class Balanced Loss
     # parameters needed for the class balanced loss
-    # beta  : class blanced loss 
-    # gamma : focal loss weight 
-    beta, gamma = 0.9999,1
+    # beta  :  class blanced loss 
+    # gamma : focal loss weight
+    beta, gamma = 0.99,1
     loss_type = 'softmax'
     class_weights = customLoss.Compute_CB_weights(samples_per_cls, no_of_classes, beta)
     class_weights = class_weights.to(device)
 
     if loss_type =='softmax':
         criterion_ft = torch.nn.CrossEntropyLoss(weight=class_weights)
-    elif loss_type == 'focal':
-        criterion_ft = customLoss.CB_loss 
-        # adapt the computation of the loss in the training loop
 
+    elif loss_type == 'focal':
+        criterion_ft = customLoss.CB_loss # adapt the train loop
 
 # Observe that all parameters are being optimized
 optimizer_ft = torch.optim.Adam(model_ft.parameters(), lr=args.lr, eps=1e-08, 
@@ -154,7 +164,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
         time_elapsed = time.time() - since
         print('Duration {:.0f}m {:.0f}s'.format( time_elapsed // 60, time_elapsed % 60))
         print('-' * 10)
-        if patience >= 400 :#  implementation of early stopping with 20 epochs patience 
+        if patience >= 30 :#  implementation of early stopping with xx epochs patience 
             break
         
         # Each epoch has a training and validation phase
@@ -178,10 +188,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
                     outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels )
-
-                    # USE this loss functions to compute tje CBL :
-                    #loss = customLoss.CB_loss(labels, outputs, samples_per_cls,  no_of_classes, loss_type,  beta, gamma)        
-       
+                    #loss = customLoss.CB_loss(labels, outputs, samples_per_cls,  no_of_classes, loss_type,  beta, gamma)   # loss for CBL                
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -248,7 +255,4 @@ model_tr, state_tr = train_model(model_ft, criterion_ft,
                                         optimizer_ft, 
                                         exp_lr_scheduler, 
                                         num_epochs=args.ep)
-# Plot the training curve 
-util.plt_training( state_tr['loss'],state_tr['accuracy'],state_tr['params'], filename)
-
 
